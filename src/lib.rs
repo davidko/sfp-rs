@@ -5,4 +5,5 @@ mod test {
     }
 }
 
+pub mod sfp;
 
