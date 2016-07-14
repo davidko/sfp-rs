@@ -97,13 +97,12 @@ impl Context{
         }
     }
 
-    pub fn write(&mut self, data: &Vec<u8>) -> usize {
+    pub fn write(&mut self, data: &[u8]) -> usize {
         unsafe {
             let len = data.len() as size_t;
-            let pdata = data.as_ptr();
             let mut outlen: size_t = 0;
             sfpWritePacket(self.ctx.as_mut_ptr() as *mut libc::c_void,
-                           pdata,
+                           data.as_ptr(),
                            len,
                            &mut outlen);
             return outlen;

@@ -1,7 +1,7 @@
 extern crate sfp;
 extern crate mioco;
 
-use std::net::SocketAddr;
+use std::net::{SocketAddr, TcpStream};
 use std::io::{self, Read, Write};
 use std::str::FromStr;
 use mioco::tcp::TcpListener;
@@ -13,14 +13,14 @@ fn listend_addr() -> SocketAddr {
 }
 
 fn main() {
-    let testdata = Box::new("This is a test string.");
-    let mut ctx2 = sfp::Context::new();
-
-    let addr = listend_addr();
-    let listener = TcpListener::bind(&addr).unwrap();
-    let port = listener.local_addr().unwrap().port();
 
     mioco::start( || -> io::Result<()> {
+        let testdata = Box::new("This is a test string.");
+        let testdata2 = testdata.clone();
+
+        let addr = listend_addr();
+        let listener = TcpListener::bind(&addr).unwrap();
+        let local_addr = listener.local_addr().unwrap();
 
         // Start the server
         mioco::spawn(move || -> io::Result<()> {
@@ -44,6 +44,16 @@ fn main() {
             }
             Ok(())
         });
+
+        // Start the client
+        let mut stream = TcpStream::connect(local_addr).unwrap();
+        let mut ctx2 = sfp::Context::new();
+        ctx2.set_write_callback( move | data : &[u8]| -> usize {
+            stream.write(data).unwrap()
+        });
+        ctx2.write(testdata2.as_bytes());
+
+
         Ok(())
     }).unwrap().unwrap();
 }
