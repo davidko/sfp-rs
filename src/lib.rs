@@ -1,9 +1,10 @@
-#[cfg(test)]
-mod test {
-    #[test]
-    fn it_works() {
-    }
+
+pub mod sfp_impl;
+
+pub use sfp_impl::Context;
+
+#[test]
+fn it_works() {
 }
 
-pub mod sfp;
 
