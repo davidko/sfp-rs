@@ -13,8 +13,7 @@ fn listend_addr() -> SocketAddr {
 }
 
 fn main() {
-    let testdata = "This is a test string.";
-    let mut ctx1 = sfp::Context::new();
+    let testdata = Box::new("This is a test string.");
     let mut ctx2 = sfp::Context::new();
 
     let addr = listend_addr();
@@ -24,25 +23,28 @@ fn main() {
     mioco::start( || -> io::Result<()> {
 
         // Start the server
-        mioco::spawn(|| -> io::Result<()> {
+        mioco::spawn(move || -> io::Result<()> {
+            let mut ctx1 = sfp::Context::new();
             let mut conn = try!(listener.accept());
-            ctx1.set_write_callback( |data : &[u8]| -> usize {
-                let _ = conn.write_all(&mut data);
+            let mut conn_clone = try!(conn.try_clone());
+            ctx1.set_write_callback( move |data : &[u8]| -> usize {
+                let _ = conn_clone.write_all(&data);
                 data.len()
             });
             let mut buf = [0u8; 1024];
             'mainloop: loop {
                 let size = try!(conn.read(&mut buf));
-                for b in buf {
-                    let result = ctx1.deliver(b);
+                for i in 0..size{
+                    let result = ctx1.deliver(buf[i]);
                     match result {
-                        Some(str) => { assert!(str == testdata); break 'mainloop; }
+                        Some(str) => { assert!(str == testdata.to_string().into_bytes()); break 'mainloop; }
                         _ => {}
                     }
                 }
             }
-            Ok(());
+            Ok(())
         });
+        Ok(())
     }).unwrap().unwrap();
 }
 
