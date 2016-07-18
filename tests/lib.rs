@@ -12,7 +12,8 @@ fn listend_addr() -> SocketAddr {
         FromStr::from_str(DEFAULT_LISTEN_ADDR).unwrap()
 }
 
-fn main() {
+#[test]
+fn hello() {
 
     mioco::start( || -> io::Result<()> {
         let testdata = Box::new("This is a test string.");
