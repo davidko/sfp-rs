@@ -5,6 +5,8 @@ use std::net::{SocketAddr, TcpStream};
 use std::io::{self, Read, Write};
 use std::str::FromStr;
 use mioco::tcp::TcpListener;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 const DEFAULT_LISTEN_ADDR : &'static str = "127.0.0.1:0";
 
@@ -49,10 +51,29 @@ fn hello() {
         // Start the client
         let mut stream = TcpStream::connect(local_addr).unwrap();
         let mut ctx2 = sfp::Context::new();
+        let mut stream_clone = try!(stream.try_clone());
         ctx2.set_write_callback( move | data : &[u8]| -> usize {
-            stream.write(data).unwrap()
+            stream_clone.write(data).unwrap()
         });
-        ctx2.write(testdata2.as_bytes());
+        let mut ctx2_box = Arc::new(Mutex::new(ctx2));
+        let mut stream_clone = try!(stream.try_clone());
+        let mut ctx2_clone = ctx2_box.clone();
+        mioco::spawn( move || -> io::Result<()> {
+            let mut buf = [0u8; 1024];
+            loop {
+                let size = try!(stream_clone.read(&mut buf));
+                for i in 0..size {
+                    ctx2_clone.lock().unwrap().deliver(buf[i]);
+                }
+            }
+            Ok(())
+        });
+        std::thread::sleep(std::time::Duration::new(1,0));
+        ctx2_box.lock().unwrap().connect();
+        while !ctx2_box.lock().unwrap().is_connected() {
+            std::thread::sleep(std::time::Duration::new(1,0));
+        }
+        ctx2_box.lock().unwrap().write(testdata2.as_bytes());
 
 
         Ok(())

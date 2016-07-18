@@ -3,6 +3,7 @@ extern crate gcc;
 fn main() {
     gcc::Config::new()
                 .file("src/libsfp/src/serial_framing_protocol.cpp")
+                .file("src/sfp_wrapper.c")
                 .include("src/libsfp/src")
                 .include("src/libsfp/include")
                 .include("src/cxx-util/include")

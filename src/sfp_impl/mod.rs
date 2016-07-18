@@ -1,38 +1,55 @@
 extern crate libc;
 use self::libc::{c_int, size_t};
+use std::sync::Arc;
+
+#[repr(C)]
+struct _sfpContext(*mut libc::c_void);
+
+impl Clone for _sfpContext {
+    fn clone(&self) -> _sfpContext {
+        let new_ptr = *self;
+        new_ptr
+    }
+}
+impl Copy for _sfpContext {}
+
+unsafe impl Send for _sfpContext {}
+unsafe impl Sync for _sfpContext {}
 
 //#[link(name = "sfp", kind = "static")]
 extern {
-    fn sfpDeliverOctet(ctx: *mut libc::c_void, 
+    fn sfpDeliverOctet(ctx: _sfpContext, 
                        octet: u8, 
                        buf: *mut u8,
                        len: size_t,
                        outlen: *mut size_t) -> c_int;
 
-    fn sfpWritePacket(ctx: *mut libc::c_void,
+    fn sfpWritePacket(ctx: _sfpContext,
                       buf: *const u8,
                       len: size_t,
                       outlen: *mut size_t) -> c_int;
 
-    fn sfpConnect(ctx: *mut libc::c_void);
+    fn sfpConnect(ctx: _sfpContext);
+    fn sfpIsConnected(ctx: _sfpContext) -> c_int;
 
     fn sfpGetSizeof() -> size_t;
-    fn sfpInit(ctx: *mut libc::c_void);
+    fn sfpInit(ctx: _sfpContext);
 
-    fn sfpSetWriteCallback(ctx: *mut libc::c_void,
+    fn sfpSetWriteCallback(ctx: _sfpContext,
                            writeType: u32,
                            cbfun: extern fn( octets: *mut u8, 
                                              len: size_t, 
                                              outlen: *mut size_t, 
                                              userdata: *mut Context ),
                            userdata: *mut Context);
+    fn sfpNew() -> _sfpContext;
 }
 
 const BUFSIZE : size_t = 512;
 
 #[repr(C)]
 pub struct Context {
-    ctx: Vec<u8>,
+    ctx: _sfpContext,
     buf: Vec<u8>,
     deliver_cb: Option<Box<FnMut(&Vec<u8>)>>,
     write_cb: Option<Box<FnMut(&[u8]) -> usize>>,
@@ -54,17 +71,20 @@ extern "C" fn _write_callback(octets: *mut u8,
     }
 }
 
+unsafe impl Send for Context {}
+unsafe impl Sync for Context {}
+
 impl Context{
     pub fn new() -> Context {
         unsafe {
             let ctx = Context {
-                ctx: Vec::with_capacity( sfpGetSizeof() ),
+                ctx: sfpNew(),
                 buf: Vec::with_capacity( BUFSIZE ),
                 deliver_cb : None,
                 write_cb: None
             };
             let mut ctx_box = Box::new(ctx);
-            sfpSetWriteCallback(ctx_box.ctx.as_mut_ptr() as *mut libc::c_void,
+            sfpSetWriteCallback(ctx_box.ctx,
                                 1, // this is SFP_WRITE_MULTIPLE from serial_framing_protocol.h
                                 _write_callback,
                                 &mut *ctx_box);
@@ -73,12 +93,24 @@ impl Context{
         }
     }
 
+    pub fn connect(&mut self) {
+        unsafe {
+            sfpConnect(self.ctx);
+        }
+    }
+
+    pub fn is_connected(&mut self) -> bool {
+        unsafe {
+            sfpIsConnected(self.ctx) != 0
+        }
+    }
+
     // When bytes are received from the underlying transport, give them to this
     // function.
     pub fn deliver(&mut self, octet: u8) -> Option<Vec<u8>> {
         unsafe {
             let mut outsize : size_t = 0;
-            if sfpDeliverOctet(self.ctx.as_mut_ptr() as *mut libc::c_void, 
+            if sfpDeliverOctet(self.ctx, 
                                octet, 
                                self.buf.as_mut_ptr(), 
                                BUFSIZE, 
@@ -101,7 +133,7 @@ impl Context{
         unsafe {
             let len = data.len() as size_t;
             let mut outlen: size_t = 0;
-            sfpWritePacket(self.ctx.as_mut_ptr() as *mut libc::c_void,
+            sfpWritePacket(self.ctx,
                            data.as_ptr(),
                            len,
                            &mut outlen);
