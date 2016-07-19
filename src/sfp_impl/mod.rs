@@ -40,7 +40,7 @@ extern {
                            cbfun: extern fn( octets: *mut u8, 
                                              len: size_t, 
                                              outlen: *mut size_t, 
-                                             userdata: *mut Context ),
+                                             userdata: *mut Context ) -> c_int,
                            userdata: *mut Context);
     fn sfpNew() -> _sfpContext;
 }
@@ -58,24 +58,25 @@ pub struct Context {
 extern "C" fn _write_callback(octets: *mut u8,
                               len: size_t,
                               outlen: *mut size_t,
-                              target: *mut Context) {
+                              target: *mut Context) -> c_int {
     unsafe {
         match (*target).write_cb {
             Some(ref mut func) => {
                 let data = Vec::from_raw_parts(octets, len, len);
-                let sent_len = func( data.as_slice() );
+                let sent_len = (*func)( data.as_slice() );
                 *outlen = sent_len;
             }
             _ => {}
         }
     }
+    len as c_int
 }
 
 unsafe impl Send for Context {}
 unsafe impl Sync for Context {}
 
 impl Context{
-    pub fn new() -> Context {
+    pub fn new() -> Box<Context> {
         unsafe {
             let ctx = Context {
                 ctx: sfpNew(),
@@ -89,7 +90,7 @@ impl Context{
                                 _write_callback,
                                 &mut *ctx_box);
 
-            return *ctx_box;
+            return ctx_box;
         }
     }
 
