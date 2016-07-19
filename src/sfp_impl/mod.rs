@@ -143,7 +143,7 @@ impl Context{
 
     pub fn set_write_callback<F>(&mut self, callback: F) 
         where F: FnMut(&[u8]) -> usize,
-              F: 'static 
+              F: 'static
     {
         self.write_cb = Some(Box::new(callback));
     }
