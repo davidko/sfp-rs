@@ -123,6 +123,7 @@ impl Context{
                     },
                     _ => {}
                 }
+                self.buf.set_len(outsize);
                 Some(self.buf.clone())
             } else {
                 None
