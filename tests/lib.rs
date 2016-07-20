@@ -44,10 +44,12 @@ fn hello() {
             for i in 0..size{
                 let result = ctx1.deliver(buf[i]);
                 match result {
-                    Some(str) => {
+                    Some(mutex) => {
+                        let mybox = mutex.lock().unwrap();
                         println!("Server received packet.");
-                        println!("{}", String::from_utf8(str).unwrap());
-                        assert!(str == testdata.to_string().into_bytes()); break 'mainloop; 
+                        println!("{}", String::from_utf8(*mybox.clone()).unwrap());
+                        std::io::stdout().flush();
+                        //assert!((*mybox) == testdata.to_string().into_bytes()); break 'mainloop; 
                     }
                     _ => {println!(".");}
                 }
@@ -73,6 +75,7 @@ fn hello() {
             });
     }
     let mut my_stream = stream.try_clone().unwrap();
+    let mut ctx2_clone = ctx2_box.clone();
     thread::spawn(move || -> io::Result<()>{
         let mut buf = [0u8; 1024];
         loop {

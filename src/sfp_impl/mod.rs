@@ -1,6 +1,6 @@
 extern crate libc;
 use self::libc::{c_int, size_t};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 #[repr(C)]
 struct _sfpContext(*mut libc::c_void);
@@ -55,6 +55,9 @@ pub struct Context {
     write_cb: Option<Box<FnMut(&[u8]) -> usize>>,
 }
 
+unsafe impl Send for Context {}
+unsafe impl Sync for Context {}
+
 extern "C" fn _write_callback(octets: *mut u8,
                               len: size_t,
                               outlen: *mut size_t,
@@ -71,9 +74,6 @@ extern "C" fn _write_callback(octets: *mut u8,
     }
     len as c_int
 }
-
-unsafe impl Send for Context {}
-unsafe impl Sync for Context {}
 
 impl Context{
     pub fn new() -> Box<Context> {
@@ -108,7 +108,7 @@ impl Context{
 
     // When bytes are received from the underlying transport, give them to this
     // function.
-    pub fn deliver(&mut self, octet: u8) -> Option<Vec<u8>> {
+    pub fn deliver(&mut self, octet: u8) -> Option<Mutex<Box<Vec<u8>>>> {
         unsafe {
             let mut outsize : size_t = 0;
             if sfpDeliverOctet(self.ctx, 
@@ -125,7 +125,7 @@ impl Context{
                 }
                 println!("deliver returning data...");
                 self.buf.set_len(outsize);
-                Some(self.buf.clone())
+                Some(Mutex::new(Box::new(self.buf.clone())))
             } else {
                 None
             }
