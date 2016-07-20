@@ -56,7 +56,6 @@ fn hello() {
             Ok(())
         });
         println!("Starting the server...done");
-        mioco::sleep(std::time::Duration::new(3,0));
 
         // Start the client
         let mut ctx2 = sfp::Context::new();
@@ -67,29 +66,39 @@ fn hello() {
             println!("Client stream connected.");
             let mut stream_clone = try!(stream.try_clone());
             {
+                // Set the write callback
                 ctx2_clone.lock().unwrap().set_write_callback( move | data : &[u8]| -> usize {
                     println!("Client writing {} bytes...", data.len());
                     stream_clone.write(data).unwrap()
                     });
             }
-            let mut buf = [0u8; 1024];
-            loop {
-                let size = try!(stream.read(&mut buf));
-                println!("client read {} bytes.", size);
-                for i in 0..size {
-                    {
-                        ctx2_clone.lock().unwrap().deliver(buf[i]);
+            let mut stream = stream.try_clone().unwrap();
+            mioco::spawn(move || -> io::Result<()>{
+                println!("Spawn in spawn!");
+                let mut buf = [0u8; 1024];
+                loop {
+                    // Start the reader loop
+                    let size = try!(stream.read(&mut buf));
+                    println!("client read {} bytes.", size);
+                    for i in 0..size {
+                        {
+                            ctx2_clone.lock().unwrap().deliver(buf[i]);
+                        }
                     }
                 }
+                Ok(())
+            });
+
+            mioco::sleep(std::time::Duration::new(1,0));
+            {
+                println!("Connecting...");
+                ctx2_box.lock().unwrap().connect();
+                println!("Connecting...done");
             }
             Ok(())
         });
-        mioco::sleep(std::time::Duration::new(1,0));
-        {
-            println!("Connecting...");
-            ctx2_box.lock().unwrap().connect();
-            println!("Connecting...done");
-        }
+
+        /*
         {
             loop {
                 {
@@ -107,6 +116,7 @@ fn hello() {
 
 
         mioco::sleep(std::time::Duration::new(5,0));
+        */
         Ok(())
     }).unwrap().unwrap();
 }
