@@ -49,7 +49,7 @@ fn hello() {
                         Some(str) => {
                             assert!(str == testdata.to_string().into_bytes()); break 'mainloop; 
                         }
-                        _ => {}
+                        _ => {println!(".");}
                     }
                 }
             }
@@ -72,13 +72,13 @@ fn hello() {
                     stream_clone.write(data).unwrap()
                     });
             }
-            let mut stream = stream.try_clone().unwrap();
+            let mut my_stream = stream.try_clone().unwrap();
             mioco::spawn(move || -> io::Result<()>{
                 println!("Spawn in spawn!");
                 let mut buf = [0u8; 1024];
                 loop {
                     // Start the reader loop
-                    let size = try!(stream.read(&mut buf));
+                    let size = try!(my_stream.read(&mut buf));
                     println!("client read {} bytes.", size);
                     for i in 0..size {
                         {
@@ -95,27 +95,29 @@ fn hello() {
                 ctx2_box.lock().unwrap().connect();
                 println!("Connecting...done");
             }
+            {
+                loop {
+                    {
+                        if ctx2_box.lock().unwrap().is_connected() {
+                            break;
+                        }
+                    }
+                    println!("Waiting...");
+                    mioco::sleep(std::time::Duration::new(1,0));
+                }
+            }
+
+            {
+                ctx2_box.lock().unwrap().write(testdata2.as_bytes());
+            }
+            stream.shutdown(std::net::Shutdown::Both);
+            mioco::sleep(std::time::Duration::new(5,0));
+
             Ok(())
         });
 
         /*
-        {
-            loop {
-                {
-                    if ctx2_box.lock().unwrap().is_connected() {
-                        break;
-                    }
-                }
-                println!("Waiting...");
-                mioco::sleep(std::time::Duration::new(1,0));
-            }
-        }
-        {
-            ctx2_box.lock().unwrap().write(testdata2.as_bytes());
-        }
 
-
-        mioco::sleep(std::time::Duration::new(5,0));
         */
         Ok(())
     }).unwrap().unwrap();
