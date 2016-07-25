@@ -47,6 +47,7 @@ fn hello() {
                     let result = ctx1.deliver(buf[i]);
                     match result {
                         Some(str) => {
+                            println!("Server received packet.");
                             assert!(str == testdata.to_string().into_bytes()); break 'mainloop; 
                         }
                         _ => {}
@@ -56,12 +57,12 @@ fn hello() {
             Ok(())
         });
         println!("Starting the server...done");
-        mioco::sleep(std::time::Duration::new(3,0));
+        mioco::sleep(std::time::Duration::new(1,0));
 
         // Start the client
-        let mut ctx2 = sfp::Context::new();
-        let mut ctx2_box = Arc::new(Mutex::new(ctx2));
-        let mut ctx2_clone = ctx2_box.clone();
+        let ctx2 = sfp::Context::new();
+        let ctx2_box = Arc::new(Mutex::new(ctx2));
+        let ctx2_clone = ctx2_box.clone();
         mioco::spawn( move || -> io::Result<()> {
             let mut stream = TcpStream::connect(&local_addr).unwrap();
             println!("Client stream connected.");
@@ -76,6 +77,9 @@ fn hello() {
             loop {
                 let size = try!(stream.read(&mut buf));
                 println!("client read {} bytes.", size);
+                if size == 0 {
+                    break;
+                }
                 for i in 0..size {
                     {
                         ctx2_clone.lock().unwrap().deliver(buf[i]);

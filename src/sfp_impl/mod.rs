@@ -1,6 +1,5 @@
 extern crate libc;
 use self::libc::{c_int, size_t};
-use std::sync::Arc;
 
 #[repr(C)]
 struct _sfpContext(*mut libc::c_void);
@@ -62,7 +61,10 @@ extern "C" fn _write_callback(octets: *mut u8,
     unsafe {
         match (*target).write_cb {
             Some(ref mut func) => {
-                let data = Vec::from_raw_parts(octets, len, len);
+                let mut data = Vec::new();
+                for i in 0..len {
+                    data.push( *octets.offset(i as isize) );
+                }
                 let sent_len = (*func)( data.as_slice() );
                 *outlen = sent_len;
             }
