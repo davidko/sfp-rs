@@ -7,6 +7,7 @@ fn main() {
                 .include("src/libsfp/src")
                 .include("src/libsfp/include")
                 .include("src/cxx-util/include")
+                .include ("include")
                 .cpp(true)
                 .flag("-std=c++11")
                 .compile("libsfp.a");
