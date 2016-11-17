@@ -1,6 +1,8 @@
 extern crate libc;
 use self::libc::{c_int, size_t};
 
+use std;
+
 #[repr(C)]
 struct _sfpContext(*mut libc::c_void);
 
@@ -133,22 +135,29 @@ impl Context{
         }
     }
 
-    pub fn write(&mut self, data: &[u8]) -> usize {
-        unsafe {
-            let len = data.len() as size_t;
-            let mut outlen: size_t = 0;
-            sfpWritePacket(self.ctx,
-                           data.as_ptr(),
-                           len,
-                           &mut outlen);
-            return outlen;
-        }
-    }
-
     pub fn set_write_callback<F>(&mut self, callback: F) 
         where F: FnMut(&[u8]) -> usize,
               F: 'static
     {
         self.write_cb = Some(Box::new(callback));
+    }
+}
+
+impl std::io::Write for Context {
+    fn write (&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
+        unsafe {
+            let len = buf.len() as size_t;
+            let mut outlen: size_t = 0;
+            sfpWritePacket(self.ctx,
+                           buf.as_ptr(),
+                           len,
+                           &mut outlen);
+            Ok(outlen as usize)
+        }
+    }
+
+    // TODO: Implement this?
+    fn flush (&mut self) -> Result<(), std::io::Error> {
+        Ok(())
     }
 }
