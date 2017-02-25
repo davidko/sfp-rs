@@ -120,7 +120,7 @@ impl Context{
                                self.buf.as_mut_ptr(), 
                                BUFSIZE, 
                                &mut outsize) > 0 {
-                // If there is a write callback, call it
+                // If there is a deliver callback, call it
                 match self.deliver_cb {
                     Some(ref mut func) => {
                         func(&self.buf.clone());
