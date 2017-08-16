@@ -1,6 +1,0 @@
-[submodule "src/libsfp"]
-	path = src/libsfp
-	url = https://github.com/BaroboRobotics/libsfp
-[submodule "src/cxx-util"]
-	path = src/cxx-util
-	url = https://github.com/BaroboRobotics/cxx-util
