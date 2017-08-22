@@ -283,7 +283,7 @@ pub struct Context {
     connect_state: ConnectState,
     deliver_cb: Option<Box<FnMut(&Vec<u8>)>>,
     write_cb: Option<Box<FnMut(&[u8]) -> usize>>,
-    connect_cb: Option<extern fn()>
+    connect_cb: Option<Box<FnMut()>>
 }
 
 impl Context {
@@ -382,6 +382,9 @@ impl Context {
             SEQ_SYN1 => {
                 // Send SYN2
                 self.connect_state = ConnectState::CONNECTED;
+                if let Some(ref mut cb) = self.connect_cb {
+                    cb();
+                }
                 self.write_packet( SfpPacket::Syn{seq: SEQ_SYN2} )
                     .and_then(|_| { Ok(()) } )
             }
@@ -404,6 +407,13 @@ impl Context {
               F: 'static
     {
         self.write_cb = Some(Box::new(callback));
+    }
+
+    pub fn set_connect_callback<F>(&mut self, callback: F) 
+        where F: FnMut(),
+              F: 'static
+    {
+        self.connect_cb = Some(Box::new(callback));
     }
 
     pub fn write(&mut self, buf: &[u8]) -> SfpResult<usize> {
