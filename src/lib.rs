@@ -1,5 +1,5 @@
 
-#[macro_use] extern crate log;
+// #[macro_use] extern crate log;
 
 use std::collections::VecDeque;
 use std::mem;
@@ -54,7 +54,7 @@ pub enum SfpError {
     Other(&'static str),
 }
 
-enum ConnectState {
+pub enum ConnectState {
     DISCONNECTED,
     SENT_SYN0,
     SENT_SYN1,
@@ -96,6 +96,7 @@ fn crc_update(crc: u16, byte: u8) -> u16 {
     ((b<<8)|((crc>>8)&0xff)) ^ (b>>4) ^ (b<<3)
 }
 
+#[repr(C)]
 pub struct Codec {
     header: u8,
     crc: Crc,
@@ -185,7 +186,7 @@ impl Codec {
             }
             SfpPacket::Rtx{seq: _seq, buf: _buf} => {
                 let header:u8 = (FRAMETYPE_RTX << 6) | _seq;
-                info!("Sending RTX SFP packet with header: 0x{:x}", header);
+                //info!("Sending RTX SFP packet with header: 0x{:x}", header);
                 crc = crc_update(crc, header);
                 if [SFP_ESC, SFP_FLAG].contains(&header) {
                         buf.push(SFP_ESC);
@@ -236,7 +237,6 @@ impl Codec {
         }
 
         else if self.crc != SFP_CRC_GOOD {
-            panic!("CRC check failed.");
             Err( SfpError::CrcFailed )
         }
 
@@ -244,7 +244,7 @@ impl Codec {
             let len = self.buf.len();
             self.buf.split_off( len-2 );
             let buf = self.buf.clone();
-            info!("SFP Packet Header: 0x{:X}", self.header);
+            //info!("SFP Packet Header: 0x{:X}", self.header);
             let rc = match self.header >> 6 {
                 FRAMETYPE_USR => SfpPacket::Usr{ seq: self.header&0x3F, buf: buf},
                 FRAMETYPE_RTX => SfpPacket::Rtx{ seq: self.header&0x3F, buf: buf},
@@ -274,6 +274,7 @@ impl Codec {
     }
 }
 
+#[repr(C)]
 pub struct Context {
     codec: Codec,
     rx_seq: u8,
@@ -282,6 +283,7 @@ pub struct Context {
     connect_state: ConnectState,
     deliver_cb: Option<Box<FnMut(&Vec<u8>)>>,
     write_cb: Option<Box<FnMut(&[u8]) -> usize>>,
+    connect_cb: Option<extern fn()>
 }
 
 impl Context {
@@ -292,10 +294,21 @@ impl Context {
                  history: VecDeque::with_capacity(32),
                  connect_state: ConnectState::DISCONNECTED,
                  deliver_cb: None,
-                 write_cb: None
+                 write_cb: None,
+                 connect_cb: None
         }
     }
 
+    pub fn connect(&mut self) -> SfpResult<usize> {
+        // Begin the connection process. Check the connection status periodically to ensure the
+        // context is connected before sending data.
+        self.write_packet( SfpPacket::Syn{ seq: SEQ_SYN0 } )
+    }
+
+    pub fn connect_state(&self) -> &ConnectState {
+        &self.connect_state
+    }
+    
     pub fn deliver(&mut self, octet: u8) -> SfpResult<Option<Vec<u8>>> {
         // Deliver them to our codec
         match self.codec.deliver(octet) {
@@ -309,7 +322,7 @@ impl Context {
                             Ok(Some(buf))
                         } else {
                             // Send nak
-                            warn!("Received out-of-bounds sequence number. Sending NAK...");
+                            //warn!("Received out-of-bounds sequence number. Sending NAK...");
                             let seq = self.rx_seq;
                             self.write_packet( SfpPacket::Nak{seq: seq} )
                                 .and_then(|_| Ok(None) )
@@ -327,10 +340,10 @@ impl Context {
                     }
                     SfpPacket::Nak{seq} => {
                         // Find the packet with sequence number 'seq' in our tx history
-                        info!("SFP Received NAK. Delivering repeat packet...");
+                        //info!("SFP Received NAK. Delivering repeat packet...");
                         let packet = match self.history.iter().find(|p| {
                             match **p {
-                                SfpPacket::Usr{seq: _seq, ref buf} => _seq == seq,
+                                SfpPacket::Usr{seq: _seq, buf: _} => _seq == seq,
                                 _ => false,
                             }
                         }) {
@@ -350,8 +363,7 @@ impl Context {
                             .and_then(|_| Ok(None) )
                     }
                     SfpPacket::Syn{seq} => {
-                        self.handle_syn(seq);
-                        Ok(None)
+                        self.handle_syn(seq).map(|_| None)
                     }
                 }
             },
@@ -394,7 +406,7 @@ impl Context {
         self.write_cb = Some(Box::new(callback));
     }
 
-    fn write(&mut self, buf: &[u8]) -> SfpResult<usize> {
+    pub fn write(&mut self, buf: &[u8]) -> SfpResult<usize> {
         match self.write_cb {
             Some(ref mut func) => Ok(func(buf)),
             None => Err(SfpError::Other("Error! Write callback not set.")),
@@ -415,6 +427,25 @@ fn next_seq_num(seq: u8) -> u8 {
     }
     n
 }
+
+// Unmangled extern "C" functions
+
+/*
+#[no_mangle]
+pub extern fn sfp_new() -> Box<Context> {
+    Box::new(Context::new())
+}
+
+#[no_mangle]
+pub extern fn test_func(buf: &mut [u8]){
+    buf[1] = 666;
+}
+
+#[no_mangle]
+pub extern "C" fn deliver(ctx: &mut Box<Context>, octet: u8) -> Box<SfpResult<Option<Vec<u8>>>> {
+    Box::new(Err(SfpError::Other("Not implemented.")))
+}
+*/
 
 #[test]
 fn it_works() {

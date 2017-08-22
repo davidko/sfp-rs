@@ -4,6 +4,5 @@ version = "0.1.0"
 authors = ["David Ko <david@barobo.com>"]
 
 [dependencies]
-libc = "*"
 log = "*"
 
