@@ -319,6 +319,9 @@ impl Context {
                         if self.rx_seq == seq {
                             // Update our own seq num
                             self.rx_seq = next_seq_num(seq);
+                            if let Some(ref mut cb) = self.deliver_cb {
+                                cb( &buf );
+                            }
                             Ok(Some(buf))
                         } else {
                             // Send nak
@@ -414,6 +417,13 @@ impl Context {
               F: 'static
     {
         self.connect_cb = Some(Box::new(callback));
+    }
+
+    pub fn set_deliver_callback<F>(&mut self, callback: F)
+        where F: FnMut(&Vec<u8>),
+              F: 'static
+    {
+        self.deliver_cb = Some(Box::new(callback));
     }
 
     pub fn write(&mut self, buf: &[u8]) -> SfpResult<usize> {
