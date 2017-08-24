@@ -426,7 +426,16 @@ impl Context {
         self.deliver_cb = Some(Box::new(callback));
     }
 
-    pub fn write(&mut self, buf: &[u8]) -> SfpResult<usize> {
+    pub fn write(&mut self, buf: Vec<u8>) -> SfpResult<usize> {
+        let tx_seq = self.tx_seq;
+        let rc = self.write_packet(
+            SfpPacket::Usr{ seq: tx_seq, buf: buf }
+            );
+        self.tx_seq = next_seq_num(self.tx_seq);
+        rc
+    }
+
+    fn write_impl(&mut self, buf: &[u8]) -> SfpResult<usize> {
         match self.write_cb {
             Some(ref mut func) => Ok(func(buf)),
             None => Err(SfpError::Other("Error! Write callback not set.")),
@@ -436,7 +445,7 @@ impl Context {
     fn write_packet(&mut self, packet: SfpPacket) -> SfpResult<usize> {
         let result = self.codec.encode(packet).unwrap();
         let data = result.as_slice();
-        self.write(data)
+        self.write_impl(data)
     }
 }
 
