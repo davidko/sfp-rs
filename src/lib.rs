@@ -54,6 +54,7 @@ pub enum SfpError {
     Other(&'static str),
 }
 
+#[derive(PartialEq)]
 pub enum ConnectState {
     DISCONNECTED,
     SENT_SYN0,
@@ -300,8 +301,11 @@ impl Context {
     }
 
     pub fn connect(&mut self) -> SfpResult<usize> {
-        // Begin the connection process. Check the connection status periodically to ensure the
-        // context is connected before sending data.
+        //! Begin the connection process. Check the connection status periodically to ensure the
+        //! context is connected before sending data.
+        println!("SFP starting connection process...");
+        self.rx_seq = 0;
+        self.tx_seq = 0;
         self.write_packet( SfpPacket::Syn{ seq: SEQ_SYN0 } )
     }
 
@@ -310,7 +314,7 @@ impl Context {
     }
     
     pub fn deliver(&mut self, octet: u8) -> SfpResult<Option<Vec<u8>>> {
-        // Deliver them to our codec
+        //! Deliver octets from the transport layer to this function
         match self.codec.deliver(octet) {
             Some(Ok(packet)) => {
                 match packet {
