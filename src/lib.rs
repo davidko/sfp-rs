@@ -382,7 +382,7 @@ impl Context {
             Some(Err(_)) => {
                 // Send a NAK
                 self.send_nak().unwrap_or_else(|e| {
-                    warn!("Could not send NAK: {}", e);
+                    //warn!("Could not send NAK: {}", e);
                     0
                 });
                 Ok(None)
