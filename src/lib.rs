@@ -135,7 +135,7 @@ impl Codec {
                         // Done receiving the frame.
                         return Some(self.process_frame());
                     } else {
-                        self.soft_reset();
+                        self.reset();
                     }
                 }
                 SFP_ESC => {
@@ -238,6 +238,7 @@ impl Codec {
         }
 
         else if self.crc != SFP_CRC_GOOD {
+            self.soft_reset();
             Err( SfpError::CrcFailed )
         }
 
@@ -255,16 +256,20 @@ impl Codec {
                     return Err( SfpError::UnknownHeader ); 
                 }
             };
-            self.soft_reset();
+            self.reset();
             Ok(rc)
         }
     }
 
-    fn soft_reset(&mut self) {
+    pub fn soft_reset(&mut self) {
         self.header = 0;
         self.crc = SFP_CRC_INIT;
         self.state = SfpState::NEW;
         self.esc_state = SfpEscState::NORMAL;
+    }
+
+    pub fn reset(&mut self) {
+        self.soft_reset();
         self.in_buf.clear();
         self.buf.clear();
     }
@@ -303,7 +308,7 @@ impl Context {
     pub fn connect(&mut self) -> SfpResult<usize> {
         //! Begin the connection process. Check the connection status periodically to ensure the
         //! context is connected before sending data.
-        println!("SFP starting connection process...");
+        self.codec.reset();
         self.rx_seq = 0;
         self.tx_seq = 0;
         self.write_packet( SfpPacket::Syn{ seq: SEQ_SYN0 } )
@@ -375,7 +380,11 @@ impl Context {
                 }
             },
             Some(Err(_)) => {
-                self.connect();
+                // Send a NAK
+                self.send_nak().unwrap_or_else(|e| {
+                    warn!("Could not send NAK: {}", e);
+                    0
+                });
                 Ok(None)
             },
             _ => Ok(None)
@@ -454,6 +463,14 @@ impl Context {
         let result = self.codec.encode(packet).unwrap();
         let data = result.as_slice();
         self.write_impl(data)
+    }
+
+    fn send_nak(&mut self) -> SfpResult<usize> {
+        if self.connect_state != ConnectState::CONNECTED {
+            return Err(SfpError::Other("Not sending NAK: not connected."));
+        }
+        let packet = SfpPacket::Syn{ seq: self.rx_seq };
+        self.write_packet(packet)
     }
 }
 
