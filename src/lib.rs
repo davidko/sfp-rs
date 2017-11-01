@@ -374,6 +374,10 @@ impl Context {
                     }
                 }
             },
+            Some(Err(_)) => {
+                self.connect();
+                Ok(None)
+            },
             _ => Ok(None)
         }
     }
