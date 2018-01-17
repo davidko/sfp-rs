@@ -27,6 +27,8 @@ const SEQ_SYN1:u8 = 1;
 const SEQ_SYN2:u8 = 2;
 const SEQ_SYN_DIS:u8 = 3;
 
+const HISTORY_SIZE:usize = 32;
+
 #[derive(Clone, PartialEq)]
 pub enum SfpPacket {
     Usr{seq: u8, buf: Vec<u8>},
@@ -297,7 +299,7 @@ impl Context {
         Context{ codec: Codec::new(),
                  rx_seq: 0,
                  tx_seq: 0,
-                 history: VecDeque::with_capacity(32),
+                 history: VecDeque::with_capacity(HISTORY_SIZE),
                  connect_state: ConnectState::DISCONNECTED,
                  deliver_cb: None,
                  write_cb: None,
@@ -445,9 +447,12 @@ impl Context {
 
     pub fn write(&mut self, buf: Vec<u8>) -> SfpResult<usize> {
         let tx_seq = self.tx_seq;
-        let rc = self.write_packet(
-            SfpPacket::Usr{ seq: tx_seq, buf: buf }
-            );
+        let packet = SfpPacket::Usr{ seq: tx_seq, buf: buf };
+        while self.history.len() >= HISTORY_SIZE {
+            self.history.pop_front();
+        }
+        self.history.push_back(packet.clone());
+        let rc = self.write_packet(packet);
         self.tx_seq = next_seq_num(self.tx_seq);
         rc
     }
