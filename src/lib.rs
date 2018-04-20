@@ -1,5 +1,5 @@
 
-// #[macro_use] extern crate log;
+#[macro_use] extern crate log;
 
 use std::collections::VecDeque;
 use std::mem;
@@ -35,6 +35,17 @@ pub enum SfpPacket {
     Rtx{seq: u8, buf: Vec<u8>},
     Nak{seq: u8},
     Syn{seq: u8},
+}
+
+impl fmt::Debug for SfpPacket {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            SfpPacket::Usr{seq, ref buf} => write!(f, "Usr(seq: {}, len: {})", seq, buf.len()),
+            SfpPacket::Rtx{seq, ref buf} => write!(f, "Rtx(seq: {}, len: {})", seq, buf.len()),
+            SfpPacket::Nak{seq} => write!(f, "Nak(seq: {})", seq),
+            SfpPacket::Syn{seq} => write!(f, "Syn(seq: {})", seq),
+        }
+    }
 }
 
 #[derive(PartialEq)]
@@ -133,14 +144,17 @@ impl Codec {
             let byte = self.in_buf.remove(0);
             match byte {
                 SFP_FLAG => {
+                    debug!("Flag detected");
                     if self.state == SfpState::RECV {
                         // Done receiving the frame.
+                        debug!("Yield complete frame.");
                         return Some(self.process_frame());
                     } else {
                         self.reset();
                     }
                 }
                 SFP_ESC => {
+                    debug!("Escaping next byte.");
                     self.esc_state = SfpEscState::ESCAPING;
                 }
                 b => {
@@ -151,10 +165,12 @@ impl Codec {
                     }
                     self.crc_update(_b);
                     if self.state == SfpState::NEW {
+                        debug!("SFP Received header: 0x{:x}", _b);
                         self.header = _b;
                         self.state = SfpState::RECV;
                     } else {
                         /* Receive a byte. */
+                        debug!("Push byte into receive buf({}): 0x{:x}", self.buf.len(), _b);
                         self.buf.push(_b);
                     }
                 }
@@ -326,6 +342,7 @@ impl Context {
             Some(Ok(packet)) => {
                 match packet {
                     SfpPacket::Usr{seq, buf} => {
+                        debug!("Received packet: Usr({})", seq);
                         // Check to see that the sequence number is correct
                         if self.rx_seq == seq {
                             // Update our own seq num
@@ -336,25 +353,29 @@ impl Context {
                             Ok(Some(buf))
                         } else {
                             // Send nak
-                            //warn!("Received out-of-bounds sequence number. Sending NAK...");
+                            warn!("Received out-of-bounds sequence number. Sending NAK...");
                             let seq = self.rx_seq;
                             self.write_packet( SfpPacket::Nak{seq: seq} )
                                 .and_then(|_| Ok(None) )
                         }
                     }
                     SfpPacket::Rtx{seq, buf} => {
+                        debug!("Received packet: Rtx({})", seq);
                         // Check to see that the sequence number is correct
                         if self.rx_seq == seq {
                             // Update our own seq num
                             self.rx_seq = next_seq_num(seq);
                             Ok(Some(buf))
                         } else { // If seq is incorrect, ignore this packet
+                            warn!("Received RTX packet with incorrect sequence number. Expected: {}, got: {}",
+                                  self.rx_seq, seq);
                             Ok(None)
                         }
                     }
                     SfpPacket::Nak{seq} => {
+                        debug!("Received packet: Nak({})", seq);
                         // Find the packet with sequence number 'seq' in our tx history
-                        //info!("SFP Received NAK. Delivering repeat packet...");
+                        info!("SFP Received NAK. Delivering repeat packet...");
                         let packet = match self.history.iter().find(|p| {
                             match **p {
                                 SfpPacket::Usr{seq: _seq, buf: _} => _seq == seq,
@@ -370,6 +391,7 @@ impl Context {
                                 rtx
                             }
                             _ => {
+                                warn!("SFP Could not send RTX: Could not find packet in history.");
                                 return Err(SfpError::Other("Could not find packet in history!"));
                             }
                         };
@@ -377,14 +399,16 @@ impl Context {
                             .and_then(|_| Ok(None) )
                     }
                     SfpPacket::Syn{seq} => {
+                        debug!("Received packet: Syn({})", seq);
                         self.handle_syn(seq).map(|_| None)
                     }
                 }
             },
             Some(Err(_)) => {
                 // Send a NAK
+                warn!("Encountered error processing delivered packet. Sending NAK...");
                 self.send_nak().unwrap_or_else(|e| {
-                    //warn!("Could not send NAK: {}", e);
+                    warn!("Could not send NAK: {}", e);
                     0
                 });
                 Ok(None)
@@ -416,7 +440,9 @@ impl Context {
             }
             SEQ_SYN_DIS => {
                 self.connect_state = ConnectState::DISCONNECTED;
-                Ok(())
+                // If we receive a disconnect, let us try to reconnect.
+                self.connect()
+                    .and_then(|_| {Ok(())} )
             }
             _ => {
                 Err(SfpError::Other("Received invalid SYN Sequence number."))
@@ -465,6 +491,7 @@ impl Context {
     }
 
     fn write_packet(&mut self, packet: SfpPacket) -> SfpResult<usize> {
+        debug!("Write packet: {:?}", packet);
         let result = self.codec.encode(packet).unwrap();
         let data = result.as_slice();
         self.write_impl(data)
@@ -474,7 +501,7 @@ impl Context {
         if self.connect_state != ConnectState::CONNECTED {
             return Err(SfpError::Other("Not sending NAK: not connected."));
         }
-        let packet = SfpPacket::Syn{ seq: self.rx_seq };
+        let packet = SfpPacket::Nak{ seq: self.rx_seq };
         self.write_packet(packet)
     }
 }
